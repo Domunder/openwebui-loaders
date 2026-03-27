@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pypdf-extractor
+  labels:
+    app: pypdf-extractor
+    app.kubernetes.io/name: pypdf-extractor
+    app.kubernetes.io/component: document-extraction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pypdf-extractor
+  template:
+    metadata:
+      labels:
+        app: pypdf-extractor
+    spec:
+      # ------------------------------------------------------------------
+      # OpenShift security: do NOT run as root
+      # ------------------------------------------------------------------
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: pypdf-extractor
+          # Replace with your actual image registry path
+          image: your-registry.example.com/pypdf-extractor:1.0.0
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # ----------------------------------------------------------------
+          # Container-level security context (OpenShift SCC compatible)
+          # ----------------------------------------------------------------
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+
+          # ----------------------------------------------------------------
+          # Tunable settings via environment variables
+          # ----------------------------------------------------------------
+          env:
+            - name: PYPDF_MODE
+              value: "single"           # "single" | "page"
+            - name: PAGES_DELIMITER
+              value: "\n"              # delimiter inserted between pages in single mode
+            - name: EXTRACT_IMAGES
+              value: "false"           # set "true" to enable image OCR (requires RapidOCR)
+            - name: WORKERS
+              value: "2"
+            - name: PORT
+              value: "8080"
+            # Optional API key — set via a Secret (see notes below)
+            # - name: API_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: pypdf-extractor-secret
+            #       key: api-key
+
+          # ----------------------------------------------------------------
+          # Read-only filesystem: mount writable scratch space
+          # ----------------------------------------------------------------
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+          # ----------------------------------------------------------------
+          # Resource limits — tune to your workload
+          # ----------------------------------------------------------------
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # ----------------------------------------------------------------
+          # Probes
+          # ----------------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      # Restart policy for Pods managed by a Deployment must be Always
+      restartPolicy: Always
