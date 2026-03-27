@@ -162,3 +162,10 @@ uvicorn app:app --reload --port 8080
 curl -X PUT http://localhost:8080/process \
      -F "file=@/path/to/sample.pdf" | python -m json.tool
 ```
+
+
+Build
+
+```
+docker buildx build --platform linux/amd64 -t  hatchet8513/pypdf-extractor:1.0.1 --push .
+```

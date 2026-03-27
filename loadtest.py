@@ -23,7 +23,7 @@ async def upload(session, i, semaphore):
                 data = aiohttp.FormData()
                 data.add_field("file", f, filename="test.pdf", content_type="application/pdf")
 
-                async with session.put(
+                async with session.post(
                     URL,
                     data=data,
                     timeout=TIMEOUT,
