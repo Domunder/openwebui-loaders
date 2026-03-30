@@ -2,11 +2,11 @@ import asyncio
 import time
 import aiohttp
 
-URL = "http://localhost:8080/process"
+URL = "http://localhost:5001/process"
 FILE_PATH = "test.pdf"
 
-TOTAL_REQUESTS = 60
-MAX_CONCURRENT = 10
+TOTAL_REQUESTS = 30
+MAX_CONCURRENT = 30
 TIMEOUT = 120
 
 # 👉 Your API key must match the server's API_KEY env variable

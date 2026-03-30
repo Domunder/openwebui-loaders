@@ -3,7 +3,12 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install build deps and wheel dependencies into a prefix directory
+# Build-time system deps needed to compile some Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
@@ -11,13 +16,22 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.title="pypdf-extractor" \
-      org.opencontainers.image.description="OpenWebUI external document extraction engine (PyPDFLoader / single mode)" \
-      org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.title="openwebui-loaders" \
+      org.opencontainers.image.description="OpenWebUI external document loaders" \
+      org.opencontainers.image.version="2.0.0"
+
+# Runtime system libraries required by loaders:
+#   libmagic1       → python-magic (MIME sniffing used by unstructured)
+#   libxml2 / libxslt → XML/HTML parsing (BSHTMLLoader, UnstructuredXMLLoader)
+#   libreoffice     → ODT support via unstructured (remove if you don't need ODT)
+#   pandoc          → RST conversion via unstructured (remove if you don't need RST)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libmagic1 \
+        libxml2 \
+        libxslt1.1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # OpenShift runs containers with a random UID in group 0 (root group).
-# We create a dedicated non-root user but ensure group-0 ownership so
-# the random-UID OpenShift assigns can still write to needed paths.
 ENV APP_HOME=/app \
     APP_USER=appuser \
     APP_UID=1001
@@ -27,35 +41,31 @@ RUN groupadd -g 0 -o appgroup 2>/dev/null || true && \
 
 WORKDIR ${APP_HOME}
 
-# Copy installed packages from builder
+# Copy installed Python packages from builder
 COPY --from=builder /install /usr/local
 
 # Copy application source
 COPY app.py .
 
-# Temp dir used by the service for PDF processing — must be writable
-# by the root group (for OpenShift's arbitrary UID policy).
-RUN mkdir -p /tmp/pypdf-work && \
-    chown -R ${APP_UID}:0 ${APP_HOME} /tmp/pypdf-work && \
-    chmod -R g=u ${APP_HOME} /tmp/pypdf-work
+# Writable temp dir — root-group accessible for OpenShift arbitrary UIDs
+RUN mkdir -p /tmp/doc-work && \
+    chown -R ${APP_UID}:0 ${APP_HOME} /tmp/doc-work && \
+    chmod -R g=u ${APP_HOME} /tmp/doc-work
 
 USER ${APP_UID}
 
-# OpenShift convention: use port 8080 (no privileges needed)
 EXPOSE 8080
 
 # Environment variable defaults — all overridable at deploy time
-ENV PYPDF_MODE=single \
-    PAGES_DELIMITER="\n" \
-    EXTRACT_IMAGES=false \
-    MAX_FILE_SIZE_MB=20 \
-    MAX_TASK_TIMEOUT=60 \
+ENV PDF_LOADER_MODE=single \
+    PDF_EXTRACT_IMAGES=false \
+    MAX_FILE_SIZE_MB=100 \
+    TASK_TIMEOUT=60 \
     API_KEY="" \
-    PORT=8080 \
+    PORT=5001 \
     HOST=0.0.0.0 \
-    WORKERS=2
+    WORKERS=4
 
-# Use shell form so the PORT env-var is expanded correctly
 CMD uvicorn app:app \
         --host "$HOST" \
         --port "$PORT" \

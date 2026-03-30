@@ -1,5 +1,10 @@
 fastapi==0.135.2
 uvicorn[standard]==0.42.0
 python-multipart==0.0.22
+langchain-core==1.2.23
 langchain-community==0.4.1
 pypdf==6.9.2
+ftfy==6.3.1
+unstructured==0.22.6
+docx2txt==0.9
+python-magic==0.4.27

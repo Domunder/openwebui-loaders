@@ -1,14 +1,14 @@
 services:
   pypdf-extractor:
-    image: pypdf-extractor
+    image: openwebui-loaders
     build: .
-    container_name: pypdf-extractor
+    container_name: openwebui-loaders
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "5001:5001"
     environment:
-      API_KEY: "secret"
-      WORKERS: 2
+      API_KEY: ""
+      WORKERS: 4
       
 networks:
   shared-net:
