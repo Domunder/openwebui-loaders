@@ -5,8 +5,8 @@ WORKDIR /build
 
 # Build-time system deps needed to compile some Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        libmagic1 \
+    build-essential \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -17,8 +17,8 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 FROM python:3.11-slim
 
 LABEL org.opencontainers.image.title="openwebui-loaders" \
-      org.opencontainers.image.description="OpenWebUI external document loaders" \
-      org.opencontainers.image.version="2.0.0"
+    org.opencontainers.image.description="OpenWebUI external document loaders" \
+    org.opencontainers.image.version="2.0.0"
 
 # Runtime system libraries required by loaders:
 #   libmagic1       → python-magic (MIME sniffing used by unstructured)
@@ -26,9 +26,9 @@ LABEL org.opencontainers.image.title="openwebui-loaders" \
 #   libreoffice     → ODT support via unstructured (remove if you don't need ODT)
 #   pandoc          → RST conversion via unstructured (remove if you don't need RST)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libmagic1 \
-        libxml2 \
-        libxslt1.1 \
+    libmagic1 \
+    libxml2 \
+    libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
 # OpenShift runs containers with a random UID in group 0 (root group).
@@ -64,11 +64,10 @@ ENV PDF_LOADER_MODE=single \
     API_KEY="" \
     PORT=5001 \
     HOST=0.0.0.0 \
-    WORKERS=4
+    THREAD_WORKERS=4
 
 CMD uvicorn app:app \
-        --host "$HOST" \
-        --port "$PORT" \
-        --workers "$WORKERS" \
-        --log-level info \
-        --no-access-log
+    --host "$HOST" \
+    --port "$PORT" \
+    --log-level info \
+    --no-access-log

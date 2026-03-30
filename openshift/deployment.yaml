@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pypdf-extractor
+  name: openwebui-loaders
   labels:
-    app: pypdf-extractor
-    app.kubernetes.io/name: pypdf-extractor
+    app: openwebui-loaders
+    app.kubernetes.io/name: openwebui-loaders
     app.kubernetes.io/component: document-extraction
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pypdf-extractor
+      app: openwebui-loaders
   template:
     metadata:
       labels:
-        app: pypdf-extractor
+        app: openwebui-loaders
     spec:
       # ------------------------------------------------------------------
       # OpenShift security: do NOT run as root
@@ -25,26 +25,15 @@ spec:
           type: RuntimeDefault
 
       containers:
-        - name: pypdf-extractor
+        - name: openwebui-loaders
           # Replace with your actual image registry path
-          image: your-registry.example.com/pypdf-extractor:1.0.0
+          image: your-registry.example.com/openwebui-loaders:1.0.0
           imagePullPolicy: Always
 
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 5001
               protocol: TCP
-
-          # ----------------------------------------------------------------
-          # Container-level security context (OpenShift SCC compatible)
-          # ----------------------------------------------------------------
-          securityContext:
-            allowPrivilegeEscalation: false
-            runAsNonRoot: true
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
 
           # ----------------------------------------------------------------
           # Tunable settings via environment variables
@@ -56,15 +45,15 @@ spec:
               value: "\n"              # delimiter inserted between pages in single mode
             - name: EXTRACT_IMAGES
               value: "false"           # set "true" to enable image OCR (requires RapidOCR)
-            - name: WORKERS
-              value: "2"
+            - name: THREAD_WORKERS
+              value: "4"
             - name: PORT
-              value: "8080"
+              value: "5001"
             # Optional API key — set via a Secret (see notes below)
             # - name: API_KEY
             #   valueFrom:
             #     secretKeyRef:
-            #       name: pypdf-extractor-secret
+            #       name: openwebui-loaders-secret
             #       key: api-key
 
           # ----------------------------------------------------------------

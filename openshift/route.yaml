@@ -1,13 +1,13 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: pypdf-extractor
+  name: openwebui-loaders
   labels:
-    app: pypdf-extractor
+    app: openwebui-loaders
 spec:
   to:
     kind: Service
-    name: pypdf-extractor
+    name: openwebui-loaders
   port:
     targetPort: http
   tls:
