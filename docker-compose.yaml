@@ -9,7 +9,7 @@ services:
     ports:
       - "5001:5001"
     environment:
-      API_KEY: "secret"
+      API_KEY: "YOUR_API_KEY"
       WORKERS: 4
       
 networks:
