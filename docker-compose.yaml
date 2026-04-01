@@ -3,11 +3,13 @@ services:
     image: openwebui-loaders
     build: .
     container_name: openwebui-loaders
+    networks:
+    - shared-net
     restart: unless-stopped
     ports:
       - "5001:5001"
     environment:
-      API_KEY: ""
+      API_KEY: "secret"
       WORKERS: 4
       
 networks:

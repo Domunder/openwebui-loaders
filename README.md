@@ -10,8 +10,7 @@ Supported formats: PDF, DOCX, XLSX, PPTX, CSV, XML, HTML, Markdown, EPUB, ODT, R
 ## Build & push
 
 ```bash
-docker buildx build --platform linux/amd64 \
-  -t your-registry.example.com/openwebui-loaders:1.0.0 --push .
+docker buildx build --platform linux/amd64 -t hatchet8513/openwebui-loaders:1.0.0 --push .
 ```
 
 ---

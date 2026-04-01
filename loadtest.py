@@ -5,8 +5,8 @@ import aiohttp
 URL = "http://localhost:5001/process"
 FILE_PATH = "test.pdf"
 
-TOTAL_REQUESTS = 30
-MAX_CONCURRENT = 30
+TOTAL_REQUESTS = 10
+MAX_CONCURRENT = 10
 TIMEOUT = 120
 
 # 👉 Your API key must match the server's API_KEY env variable
@@ -23,7 +23,7 @@ async def upload(session, i, semaphore):
                 data = aiohttp.FormData()
                 data.add_field("file", f, filename="test.pdf", content_type="application/pdf")
 
-                async with session.post(
+                async with session.put(
                     URL,
                     data=data,
                     timeout=TIMEOUT,
@@ -39,7 +39,7 @@ async def upload(session, i, semaphore):
                     json_data = await resp.json()
                     print(json_data)
 
-                    if "documents" not in json_data:
+                    if not isinstance(json_data, list):
                         print(f"[{i}] ❌ Invalid response ({duration:.2f}s)")
                         return False
 

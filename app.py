@@ -169,66 +169,70 @@ def _extract(file_path: str, filename: str, file_content_type: str) -> list[Docu
 # ---------------------------------------------------------------------------
 # /process endpoint
 # ---------------------------------------------------------------------------
-@app.post("/process")
+@app.put("/process")
 async def process(
-    file: UploadFile = File(...),
+    request: Request,
     authorization: str = Header(default=""),
 ):
-    # --- Auth ---
     if API_KEY:
         token = authorization.replace("Bearer ", "").strip() if authorization else ""
         if token != API_KEY:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-    filename = file.filename or "upload"
-    content_type = file.content_type or "application/octet-stream"
-    suffix = Path(filename).suffix or ".bin"
+    content_type = request.headers.get("Content-Type", "")
+    
+    # Handle multipart (your test script) vs raw binary (Open WebUI)
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_field = form.get("file")
+        if file_field is None:
+            raise HTTPException(status_code=400, detail="No file field in form")
+        filename = file_field.filename or "upload"
+        file_content_type = file_field.content_type or "application/octet-stream"
+        body = await file_field.read()
+    else:
+        # Raw binary — Open WebUI style
+        from urllib.parse import unquote
+        filename = unquote(request.headers.get("X-Filename", "upload"))
+        file_content_type = content_type or "application/octet-stream"
+        body = await request.body()
 
-    size = 0
+    size = len(body)
+    if size > MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    suffix = Path(filename).suffix or ".bin"
     tmp_path: str | None = None
 
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp_path = tmp.name
-            while chunk := await file.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="File too large")
-                tmp.write(chunk)
+            tmp.write(body)
 
-        log.info("Processing '%s' (%s, %.1f KB)", filename, content_type, size / 1024)
+        log.info("Processing '%s' (%s, %.1f KB)", filename, file_content_type, size / 1024)
 
         try:
             loop = asyncio.get_running_loop()
-
             if _executor is None:
                 raise HTTPException(status_code=500, detail="Executor not initialized")
 
             docs = await asyncio.wait_for(
                 loop.run_in_executor(
-                    _executor, _extract, tmp_path, filename, content_type
+                    _executor, _extract, tmp_path, filename, file_content_type
                 ),
                 timeout=TASK_TIMEOUT,
             )
-
         except asyncio.TimeoutError:
-            log.warning("Timed out after %ds for '%s'", TASK_TIMEOUT, filename)
-            raise HTTPException(
-                status_code=504,
-                detail=f"Extraction timed out after {TASK_TIMEOUT}s",
-            )
-
+            raise HTTPException(status_code=504, detail=f"Extraction timed out after {TASK_TIMEOUT}s")
         except Exception:
             log.exception("Extraction failed for '%s'", filename)
             raise HTTPException(status_code=500, detail="Extraction failed")
 
         return JSONResponse(
-            content={
-                "documents": [
-                    {"page_content": d.page_content, "metadata": d.metadata}
-                    for d in docs
-                ]
-            }
+            content=[
+                {"page_content": d.page_content, "metadata": d.metadata}
+                for d in docs
+            ]
         )
 
     finally:
