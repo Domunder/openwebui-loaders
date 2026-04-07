@@ -1,10 +1,23 @@
 import asyncio
+import ctypes
+import gc
 import logging
 import os
 from datetime import datetime
 import tempfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+# ---------------------------------------------------------------------------
+# Memory allocator tuning — must be set before glibc is fully initialized.
+# These tell glibc to return freed memory to the OS aggressively instead of
+# keeping it in the heap pool.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")   # 128 KB — trim heap aggressively
+os.environ.setdefault("MALLOC_MMAP_THRESHOLD_", "131072")   # 128 KB — large allocs via mmap → freed immediately on del
+os.environ.setdefault("MALLOC_MMAP_MAX_", "65536")          # allow many mmap regions
+os.environ.setdefault("PYTHONMALLOC", "malloc")             # use glibc directly, skip Python's own allocator
+os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 
 import ftfy
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile, Request
@@ -90,6 +103,21 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Memory release helper
+# ---------------------------------------------------------------------------
+def _force_memory_release():
+    """
+    Force Python GC + tell glibc to return freed heap pages to the OS.
+    malloc_trim(0) is a no-op on non-Linux but safe to call anywhere.
+    """
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Helper: pick the right loader
 # ---------------------------------------------------------------------------
 def _get_loader(filename: str, file_content_type: str, file_path: str):
@@ -164,6 +192,11 @@ def _extract(file_path: str, filename: str, file_content_type: str) -> list[Docu
                 metadata=doc.metadata,
             )
         )
+
+    # Explicitly release loader and raw docs before returning
+    del docs
+    del loader
+
     return fixed
 
 
@@ -182,8 +215,8 @@ async def process(
             raise HTTPException(status_code=401, detail="Unauthorized")
 
     content_type = request.headers.get("Content-Type", "")
-    
-    # Handle multipart (your test script) vs raw binary (Open WebUI)
+
+    # Handle multipart (test script) vs raw binary (Open WebUI)
     if "multipart/form-data" in content_type:
         form = await request.form()
         file_field = form.get("file")
@@ -193,7 +226,6 @@ async def process(
         file_content_type = file_field.content_type or "application/octet-stream"
         body = await file_field.read()
     else:
-        # Raw binary — Open WebUI style
         from urllib.parse import unquote
         filename = unquote(request.headers.get("X-Filename", "upload"))
         file_content_type = content_type or "application/octet-stream"
@@ -210,6 +242,9 @@ async def process(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp_path = tmp.name
             tmp.write(body)
+
+        # Release the body bytes now that they're written to disk
+        del body
 
         log.info(f"{datetime.now()} Processing '%s' (%s, %.1f KB)", filename, file_content_type, size / 1024)
 
@@ -230,12 +265,16 @@ async def process(
             log.exception(f"{datetime.now()} Extraction failed for '%s'", filename)
             raise HTTPException(status_code=500, detail="Extraction failed")
 
-        return JSONResponse(
-            content=[
-                {"page_content": d.page_content, "metadata": d.metadata}
-                for d in docs
-            ]
-        )
+        # Serialize to plain dicts before releasing doc objects
+        result = [
+            {"page_content": d.page_content, "metadata": d.metadata}
+            for d in docs
+        ]
+
+        del docs
+        _force_memory_release()
+
+        return JSONResponse(content=result)
 
     finally:
         if tmp_path:
@@ -243,3 +282,4 @@ async def process(
                 os.unlink(tmp_path)
             except OSError:
                 pass
+        _force_memory_release()
