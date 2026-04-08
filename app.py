@@ -3,6 +3,7 @@ import ctypes
 import gc
 import logging
 import os
+import time
 from datetime import datetime
 import tempfile
 from pathlib import Path
@@ -43,7 +44,7 @@ from langchain_core.documents import Document
 # ---------------------------------------------------------------------------
 API_KEY = os.getenv("API_KEY", "secret")
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
-TASK_TIMEOUT = int(os.getenv("TASK_TIMEOUT", "60"))
+TASK_TIMEOUT = int(os.getenv("TASK_TIMEOUT", "180"))
 PDF_EXTRACT_IMAGES = os.getenv("PDF_EXTRACT_IMAGES", "false").lower() == "true"
 PDF_LOADER_MODE = os.getenv("PDF_LOADER_MODE", "single")
 THREAD_WORKERS = int(os.getenv("THREAD_WORKERS", "4"))
@@ -248,22 +249,31 @@ async def process(
 
         log.info(f"{datetime.now()} Processing '%s' (%s, %.1f KB)", filename, file_content_type, size / 1024)
 
-        try:
-            loop = asyncio.get_running_loop()
-            if _executor is None:
-                raise HTTPException(status_code=500, detail="Executor not initialized")
+            try:
+                loop = asyncio.get_running_loop()
+                if _executor is None:
+                    raise HTTPException(status_code=500, detail="Executor not initialized")
 
-            docs = await asyncio.wait_for(
-                loop.run_in_executor(
-                    _executor, _extract, tmp_path, filename, file_content_type
-                ),
-                timeout=TASK_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail=f"Extraction timed out after {TASK_TIMEOUT}s")
-        except Exception:
-            log.exception(f"{datetime.now()} Extraction failed for '%s'", filename)
-            raise HTTPException(status_code=500, detail="Extraction failed")
+                t0 = time.perf_counter()
+
+                docs = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        _executor, _extract, tmp_path, filename, file_content_type
+                    ),
+                    timeout=TASK_TIMEOUT,
+                )
+
+                elapsed = time.perf_counter() - t0
+                log.info(
+                    "%s Processed '%s' (%.1f KB) in %.2fs — %d doc(s)",
+                    datetime.now(), filename, size / 1024, elapsed, len(docs),
+                )
+
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=504, detail=f"Extraction timed out after {TASK_TIMEOUT}s")
+            except Exception:
+                log.exception("%s Extraction failed for '%s'", datetime.now(), filename)
+                raise HTTPException(status_code=500, detail="Extraction failed")
 
         # Serialize to plain dicts before releasing doc objects
         result = [
