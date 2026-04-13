@@ -4,6 +4,7 @@ import gc
 import logging
 import os
 import time
+import olefile
 from datetime import datetime
 import tempfile
 from pathlib import Path
@@ -36,6 +37,7 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader,
     UnstructuredRSTLoader,
     UnstructuredXMLLoader,
+    UnstructuredEmailLoader,
 )
 from langchain_core.documents import Document
 
@@ -167,7 +169,12 @@ def _get_loader(filename: str, file_content_type: str, file_path: str):
         return UnstructuredPowerPointLoader(file_path)
 
     if file_ext == "msg":
-        return OutlookMessageLoader(file_path)
+        if olefile.isOleFile(file_path):
+            return OutlookMessageLoader(file_path)
+        else:
+            # Fallback: treat as plain RFC822/MIME email
+            from langchain_community.document_loaders import UnstructuredEmailLoader
+            return UnstructuredEmailLoader(file_path)
 
     if file_ext == "odt":
         return UnstructuredODTLoader(file_path)
@@ -252,10 +259,8 @@ async def process(
 
             t0 = time.perf_counter()
  
-            docs = await asyncio.wait_for(
-                loop.run_in_executor(
-                    _executor, _extract, tmp_path, filename, file_content_type
-                ),
+            docs = await loop.run_in_executor(
+                _executor, _extract, tmp_path, filename, file_content_type
             )
 
             elapsed = time.perf_counter() - t0
